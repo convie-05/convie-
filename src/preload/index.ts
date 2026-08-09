@@ -27,7 +27,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     update: (id: number, data: { amount?: number; categoryId?: number; date?: string; note?: string }) =>
       ipcRenderer.invoke('expenses:update', id, data),
     delete: (id: number) => ipcRenderer.invoke('expenses:delete', id),
-    exportAll: () => ipcRenderer.invoke('expenses:exportAll')
+    exportAll: () => ipcRenderer.invoke('expenses:exportAll'),
+    exportExcel: () => ipcRenderer.invoke('expenses:exportExcel')
   },
 
   // ---- 统计 API ----
@@ -40,5 +41,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('stats:monthTotal', year, month),
     yearlyTrend: (year: number) =>
       ipcRenderer.invoke('stats:yearlyTrend', year)
+  },
+
+  // ---- 系统 API ----
+  openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+
+  // ---- 账单导入 API ----
+  bills: {
+    import: () => ipcRenderer.invoke('bills:import'),
+    batchCreate: (records: Array<{ amount: number; categoryId: number; date: string; note: string }>) =>
+      ipcRenderer.invoke('bills:batchCreate', records)
   }
 })

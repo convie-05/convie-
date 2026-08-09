@@ -1,6 +1,9 @@
-import { ipcMain } from 'electron'
+import { ipcMain, dialog, shell } from 'electron'
 import { getDatabase, saveDatabase } from './database'
 import type { ExpenseFilter, UpdateExpenseData } from '../renderer/src/types'
+import * as XLSX from 'xlsx'
+import * as fs from 'fs'
+import { parseBillFile } from './bill-parser'
 
 // ============================================================
 // sql.js 辅助函数（模拟 better-sqlite3 风格的查询）
@@ -265,5 +268,105 @@ export function registerIpcHandlers(): void {
        JOIN categories c1 ON c2.parent_id = c1.id
        ORDER BY e.date DESC`
     )
+  })
+
+  /** 导出为 Excel 文件 */
+  ipcMain.handle('expenses:exportExcel', async () => {
+    const data = queryAll(
+      `SELECT e.date, c1.name AS parent_category, c2.name AS category,
+              e.amount, e.note
+       FROM expenses e
+       JOIN categories c2 ON e.category_id = c2.id
+       JOIN categories c1 ON c2.parent_id = c1.id
+       ORDER BY e.date DESC`
+    )
+
+    if (data.length === 0) {
+      return { success: false, error: '暂无数据可导出' }
+    }
+
+    // 弹出保存对话框
+    const result = await dialog.showSaveDialog({
+      title: '导出 Excel',
+      defaultPath: `Convie记账_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      filters: [{ name: 'Excel 文件', extensions: ['xlsx'] }]
+    })
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true }
+    }
+
+    // 构建工作表数据
+    const sheetData: unknown[][] = [
+      ['日期', '一级分类', '二级分类', '金额', '备注']
+    ]
+    for (const row of data) {
+      sheetData.push([
+        row.date as string,
+        row.parent_category as string,
+        row.category as string,
+        row.amount as number,
+        (row.note as string) || ''
+      ])
+    }
+
+    // 生成 Excel
+    const ws = XLSX.utils.aoa_to_sheet(sheetData)
+
+    // 设置列宽
+    ws['!cols'] = [
+      { wch: 14 },  // 日期
+      { wch: 12 },  // 一级分类
+      { wch: 12 },  // 二级分类
+      { wch: 10 },  // 金额
+      { wch: 30 }   // 备注
+    ]
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, '支出记录')
+
+    fs.writeFileSync(result.filePath, XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }))
+    return { success: true, path: result.filePath }
+  })
+
+  /** 在默认浏览器打开外部链接 */
+  ipcMain.handle('shell:openExternal', (_event, url: string) => {
+    return shell.openExternal(url)
+  })
+
+  /** 导入账单：打开文件对话框，解析并返回预览数据 */
+  ipcMain.handle('bills:import', async () => {
+    const result = await dialog.showOpenDialog({
+      title: '选择账单文件',
+      filters: [
+        { name: '账单文件 (CSV, Excel)', extensions: ['csv', 'xlsx'] },
+        { name: '所有文件', extensions: ['*'] }
+      ],
+      properties: ['openFile']
+    })
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true }
+    }
+
+    return parseBillFile(result.filePaths[0])
+  })
+
+  /** 批量导入账单记录 */
+  ipcMain.handle('bills:batchCreate', (_event, records: Array<{
+    amount: number
+    categoryId: number
+    date: string
+    note: string
+  }>) => {
+    let successCount = 0
+    for (const record of records) {
+      execute(
+        'INSERT INTO expenses (amount, category_id, date, note) VALUES (?, ?, ?, ?)',
+        [record.amount, record.categoryId, record.date, record.note]
+      )
+      successCount++
+    }
+    return { successCount }
   })
 }

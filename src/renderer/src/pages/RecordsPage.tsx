@@ -3,13 +3,14 @@ import {
   Table, Button, Input, Select, DatePicker, Space, Tag, Modal,
   Form, InputNumber, message, Popconfirm, Row, Col
 } from 'antd'
-import { PlusOutlined, SearchOutlined, DeleteOutlined, EditOutlined, ExportOutlined } from '@ant-design/icons'
+import { PlusOutlined, SearchOutlined, DeleteOutlined, EditOutlined, ExportOutlined, FileExcelOutlined, ImportOutlined } from '@ant-design/icons'
 import { useExpenseStore } from '../stores/expenseStore'
 import { useCategoryStore } from '../stores/categoryStore'
 import { useUIStore } from '../stores/uiStore'
 import { formatAmount, formatDate, getTodayString } from '../utils'
 import type { ExpenseWithCategory, Category } from '../types'
 import dayjs from 'dayjs'
+import BillImportModal, { ImportPreviewRecord } from '../components/BillImportModal'
 
 const RecordsPage: React.FC = () => {
   const { expenses, total, page, pageSize, loading, fetchExpenses, setFilter, setPage, deleteExpense } = useExpenseStore()
@@ -21,6 +22,12 @@ const RecordsPage: React.FC = () => {
   const [selectedL1Id, setSelectedL1Id] = useState<number | null>(null)
   const [searchKeyword, setSearchKeyword] = useState('')
   const [searchDateRange, setSearchDateRange] = useState<[string, string] | null>(null)
+
+  // 账单导入状态
+  const [importModalVisible, setImportModalVisible] = useState(false)
+  const [importPlatform, setImportPlatform] = useState<'alipay' | 'wechat'>('alipay')
+  const [importRecords, setImportRecords] = useState<ImportPreviewRecord[]>([])
+  const [importLoading, setImportLoading] = useState(false)
 
   // 初始化加载
   useEffect(() => {
@@ -125,8 +132,6 @@ const RecordsPage: React.FC = () => {
         return
       }
 
-      // 使用 IPC 触发导出对话框（通过主进程）
-      const { ipcRenderer } = window as any
       // 简单 CSV 导出
       let csv = '日期,一级分类,二级分类,金额,备注\n'
       for (const row of data) {
@@ -140,11 +145,81 @@ const RecordsPage: React.FC = () => {
       a.download = `Convie记账_${getTodayString()}.csv`
       a.click()
       URL.revokeObjectURL(url)
-      message.success('导出成功')
+      message.success('CSV 导出成功')
     } catch (error) {
       console.error('导出失败:', error)
       message.error('导出失败')
     }
+  }
+
+  // 导出 Excel
+  const handleExportExcel = async () => {
+    try {
+      const result = await window.electronAPI.expenses.exportExcel()
+      if (result.canceled) return
+      if (result.success) {
+        message.success('Excel 导出成功')
+      } else {
+        message.warning(result.error || '导出失败')
+      }
+    } catch (error) {
+      console.error('Excel 导出失败:', error)
+      message.error('Excel 导出失败')
+    }
+  }
+
+  // 打开账单导入
+  const handleOpenImport = async () => {
+    try {
+      const result = await window.electronAPI.bills.import()
+      if (result.canceled) return
+      if (result.error) {
+        message.error(result.error)
+        return
+      }
+      if (result.records.length === 0) {
+        message.warning('未找到支出记录')
+        return
+      }
+      setImportPlatform(result.platform)
+      setImportRecords(result.records.map((r, i) => ({
+        index: i,
+        date: r.date,
+        counterparty: r.counterparty,
+        description: r.description,
+        amount: r.amount,
+        tradeCategory: r.tradeCategory || '',
+        selectedL1Id: null,
+        selectedL2Id: null,
+        autoMatched: false
+      })))
+      setImportModalVisible(true)
+    } catch (error) {
+      console.error('导入账单失败:', error)
+      message.error('导入账单失败')
+    }
+  }
+
+  // 确认导入
+  const handleConfirmImport = async (records: ImportPreviewRecord[]) => {
+    setImportLoading(true)
+    try {
+      const result = await window.electronAPI.bills.batchCreate(
+        records.map(r => ({
+          amount: r.amount,
+          categoryId: r.selectedL2Id!,
+          date: r.date,
+          note: `${r.counterparty} - ${r.description}`
+        }))
+      )
+      message.success(`成功导入 ${result.successCount} 条记录`)
+      setImportModalVisible(false)
+      fetchExpenses()
+    } catch (error) {
+      console.error('批量导入失败:', error)
+      message.error('批量导入失败')
+    }
+    setImportLoading(false)
   }
 
   // 搜索处理
@@ -225,6 +300,12 @@ const RecordsPage: React.FC = () => {
         <Space>
           <Button icon={<ExportOutlined />} onClick={handleExport}>
             导出 CSV
+          </Button>
+          <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>
+            导出 Excel
+          </Button>
+          <Button icon={<ImportOutlined />} onClick={handleOpenImport}>
+            导入账单
           </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal}>
             新增支出
@@ -358,6 +439,16 @@ const RecordsPage: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* 账单导入预览弹窗 */}
+      <BillImportModal
+        visible={importModalVisible}
+        platform={importPlatform}
+        records={importRecords}
+        onCancel={() => setImportModalVisible(false)}
+        onImport={handleConfirmImport}
+        loading={importLoading}
+      />
     </div>
   )
 }
