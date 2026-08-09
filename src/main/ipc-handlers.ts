@@ -205,6 +205,12 @@ export function registerIpcHandlers(): void {
     return execute('DELETE FROM expenses WHERE id = ?', [id])
   })
 
+  /** 清空所有支出记录 */
+  ipcMain.handle('expenses:clearAll', () => {
+    const result = execute('DELETE FROM expenses')
+    return { success: true, deletedCount: result.changes }
+  })
+
   // ---- 统计相关 ----
 
   /** 获取月度摘要 */

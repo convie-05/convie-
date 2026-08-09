@@ -14,6 +14,7 @@ interface ExpenseState {
   setFilter: (filter: ExpenseFilter) => void
   setPage: (page: number) => void
   deleteExpense: (id: number) => Promise<boolean>
+  clearAllExpenses: () => Promise<boolean>
 }
 
 export const useExpenseStore = create<ExpenseState>((set, get) => ({
@@ -64,6 +65,20 @@ export const useExpenseStore = create<ExpenseState>((set, get) => ({
       return false
     } catch (error) {
       console.error('删除支出记录失败:', error)
+      return false
+    }
+  },
+
+  clearAllExpenses: async () => {
+    try {
+      const result = await window.electronAPI.expenses.clearAll()
+      if (result.success) {
+        set({ expenses: [], total: 0, page: 1 })
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('清空支出记录失败:', error)
       return false
     }
   }

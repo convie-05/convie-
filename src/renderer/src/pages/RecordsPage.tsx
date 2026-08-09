@@ -13,7 +13,7 @@ import dayjs from 'dayjs'
 import BillImportModal, { ImportPreviewRecord } from '../components/BillImportModal'
 
 const RecordsPage: React.FC = () => {
-  const { expenses, total, page, pageSize, loading, fetchExpenses, setFilter, setPage, deleteExpense } = useExpenseStore()
+  const { expenses, total, page, pageSize, loading, fetchExpenses, setFilter, setPage, deleteExpense, clearAllExpenses } = useExpenseStore()
   const { l1Categories, fetchL1Categories, getL2Categories } = useCategoryStore()
   const { addModalVisible, editingExpenseId, openAddModal, closeAddModal } = useUIStore()
 
@@ -120,6 +120,17 @@ const RecordsPage: React.FC = () => {
       message.success('支出记录已删除')
     } else {
       message.error('删除失败')
+    }
+  }
+
+  // 清空全部记录
+  const handleClearAll = async () => {
+    const success = await clearAllExpenses()
+    if (success) {
+      message.success('全部支出记录已清除')
+      fetchExpenses()
+    } else {
+      message.error('清除失败')
     }
   }
 
@@ -310,6 +321,18 @@ const RecordsPage: React.FC = () => {
           <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal}>
             新增支出
           </Button>
+          <Popconfirm
+            title="是否确认清除全部信息？"
+            description="此操作将删除所有支出记录，不可恢复！"
+            onConfirm={handleClearAll}
+            okText="确认清除"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+          >
+            <Button danger icon={<DeleteOutlined />}>
+              重置
+            </Button>
+          </Popconfirm>
         </Space>
       </div>
 

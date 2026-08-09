@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     update: (id: number, data: { amount?: number; categoryId?: number; date?: string; note?: string }) =>
       ipcRenderer.invoke('expenses:update', id, data),
     delete: (id: number) => ipcRenderer.invoke('expenses:delete', id),
+    clearAll: () => ipcRenderer.invoke('expenses:clearAll'),
     exportAll: () => ipcRenderer.invoke('expenses:exportAll'),
     exportExcel: () => ipcRenderer.invoke('expenses:exportExcel')
   },

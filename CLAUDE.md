@@ -42,6 +42,13 @@
 - 任何 Git 操作（add、commit、push、pull、merge、rebase、branch 等）执行前，必须先解释操作目的和影响，经用户同意后方可执行
 - `git status`、`git log`、`git diff` 等只读命令无需确认
 
+### 更新日志写入规则
+
+- **每次功能开发/修改完成后**，必须在 CLAUDE.md 末尾的「更新日志」章节追加一条记录
+- 记录格式：`### YYYY-MM-DD` 日期标题 + 无序列表描述每个改动
+- 描述内容包含：改动模块、涉及文件、功能简述
+- 此规则同样适用于 AI 助手：每次完成用户的开发需求后，自动将改动写入更新日志
+
 ---
 
 ## 技术栈
@@ -188,8 +195,10 @@ convie-ledger/
 ├── src/
 │   ├── main/                    # Electron 主进程
 │   │   ├── index.ts             # 应用入口：窗口创建、生命周期
-│   │   ├── ipc-handlers.ts      # IPC 处理器（分类 CRUD / 支出 CRUD / 统计 / 导出）
+│   │   ├── ipc-handlers.ts      # IPC 处理器（分类 CRUD / 支出 CRUD / 统计 / 导出 / 导入 / 清空）
 │   │   ├── database.ts          # 数据库初始化、Schema、种子数据（sql.js）
+│   │   ├── bill-parser.ts       # 账单解析（支付宝 CSV / 微信 CSV / 微信 XLSX，GBK 编码）
+│   │   ├── category-mapping.ts  # 账单分类自动映射（支付宝/微信 → 本地分类）
 │   │   └── utils.ts             # 主进程工具函数
 │   │
 │   ├── preload/                 # 预加载脚本（安全桥接）
@@ -204,12 +213,13 @@ convie-ledger/
 │           ├── env.d.ts         # 环境类型声明
 │           │
 │           ├── components/      # 可复用 UI 组件
-│           │   └── Layout/
-│           │       └── AppLayout.tsx   # 侧边栏导航布局
+│           │   ├── Layout/
+│           │   │   └── AppLayout.tsx       # 侧边栏导航布局
+│           │   └── BillImportModal.tsx      # 账单导入预览弹窗（分类匹配 + 批量导入）
 │           │
 │           ├── pages/           # 路由页面
 │           │   ├── DashboardPage.tsx   # 概览：月度统计卡片 + 饼图 + 柱状图
-│           │   ├── RecordsPage.tsx     # 支出记录：列表 + 新增/编辑 + 搜索 + CSV 导出
+│           │   ├── RecordsPage.tsx     # 支出记录：列表 + 新增/编辑 + 搜索 + CSV/Excel 导出 + 账单导入 + 重置
 │           │   ├── StatisticsPage.tsx  # 统计报表：年度趋势 + 分类占比
 │           │   └── SettingsPage.tsx    # 设置：分类管理（树形增删改）
 │           │
@@ -222,6 +232,7 @@ convie-ledger/
 │           │   ├── index.ts
 │           │   ├── expense.ts
 │           │   ├── category.ts
+│           │   ├── filter.ts      # 筛选条件接口 (ExpenseFilter)
 │           │   └── stats.ts
 │           │
 │           ├── utils/           # 工具函数
@@ -258,6 +269,26 @@ npm run build                    # 构建生产安装包（electron-vite + elect
 npm run lint                     # ESLint 代码检查
 npm run lint:fix                 # ESLint 自动修复
 ```
+
+---
+
+## 更新日志
+
+> 每次功能开发/修改完成后，在此追加记录。格式：日期标题 + 无序列表。
+
+### 2026-08-09
+
+- **项目初始化**：Electron + React + TypeScript 架构搭建，sql.js 本地数据库，Zustand 状态管理，Ant Design + ECharts 界面
+- **4 个页面**：DashboardPage（月度统计 + 饼图 + 柱状图）、RecordsPage（支出列表 + 新增/编辑/搜索）、StatisticsPage（年度趋势 + 分类占比）、SettingsPage（分类管理）
+- **代码质量优化**：提取共享类型 `src/renderer/src/types/filter.ts`、消除 `any` 类型、删除死代码、优化批量插入（`database.ts`）、添加空值安全（`RecordsPage.tsx`）、清理导入
+- **Excel 导出**：新增 `expenses:exportExcel` IPC 通道，`RecordsPage.tsx` 添加「导出 Excel」按钮，生成 xlsx 文件（日期/一级分类/二级分类/金额/备注）
+- **B站视频推荐**：`DashboardPage.tsx` 添加推荐卡片，`shell:openExternal` IPC 通道打开外部浏览器
+- **账单导入**：新增 `src/main/bill-parser.ts`（支付宝 CSV + 微信 CSV/XLSX 解析，GBK 编码支持，自动定位表头行）、`src/main/category-mapping.ts`（支付宝/微信分类规则自动映射）、`src/renderer/src/components/BillImportModal.tsx`（预览表格 + 手动分类），`RecordsPage.tsx` 添加「导入账单」按钮
+- **依赖新增**：`xlsx`（Excel 读写）、`iconv-lite`（GBK 编码支持）
+- **exe 打包**：`npm run build` 成功生成 `dist\Convie记账本 1.0.0.exe`
+- **记录重置**：`RecordsPage.tsx` 新增「重置」按钮（`Popconfirm` 确认弹窗），`ipc-handlers.ts` 新增 `expenses:clearAll` 通道，`expenseStore.ts` 新增 `clearAllExpenses` 方法
+- **项目文档**：新增 `README.md`（用户使用说明）、`.eslintrc.cjs`（ESLint 规则）、`.prettierrc`（代码格式化）、`resources/icon.ico` + `resources/icon.icns`（应用图标）
+- **架构流程图**：生成项目系统架构与数据流图（渲染进程 → contextBridge → 主进程 → SQLite）
 
 ---
 
